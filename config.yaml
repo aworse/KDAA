@@ -1,0 +1,67 @@
+# ============================================================
+# KDAA 실험 설정
+# 모든 스크립트가 이 파일을 읽는다. CLI 인자로 개별 항목 override 가능.
+# ============================================================
+
+seed: 20260917
+
+data:
+  root: data                 # 데이터 루트 (metadata.csv, clips/ 위치)
+  metadata: data/metadata.csv
+  sample_rate: 48000         # 권장: 48 kHz (transient 해상도 확보)
+
+# ---- 세그멘테이션(연속 세션 녹음 -> 개별 타건 클립) ----
+segment:
+  # 타건 검출 파라미터
+  band_hz: [400, 12000]      # 타건 에너지 밴드패스
+  frame_ms: 2.0              # 에너지 프레임 길이
+  hop_ms: 1.0
+  onset_percentile: 99.0     # 온셋 임계 백분위(적응형)
+  min_gap_ms: 60             # 인접 온셋 최소 간격(중복 검출 방지)
+  pre_ms: 5                  # 온셋 이전 포함 구간
+  post_ms: 95                # 온셋 이후 포함 구간(press+release 포괄)
+  # -> 클립 길이 = pre_ms + post_ms = 100 ms
+
+# ---- 특징(mel-spectrogram) ----
+feature:
+  n_fft: 1024
+  win_ms: 8.0                # ~ Harrison et al. 14ms 이하, transient 집중
+  hop_ms: 2.0
+  n_mels: 64
+  fmin: 200
+  fmax: 20000
+  log_offset: 1.0e-6
+  target_frames: 48          # 시간축 고정 프레임 수(패딩/자르기)
+
+# ---- 증강 ----
+augment:
+  enable: true
+  time_shift_ms: 3           # 랜덤 시간 이동(±)
+  specaug_time: 8            # SpecAugment 시간 마스크 최대폭(프레임)
+  specaug_freq: 8            # 주파수 마스크 최대폭(mel bin)
+  noise_snr_db: [10, 30]     # 학습 시 랜덤 노이즈 믹싱 SNR 범위
+  noise_prob: 0.5
+
+# ---- 모델 ----
+model:
+  arch: smallcnn             # smallcnn | coatnet_lite
+  dropout: 0.2
+
+# ---- 학습 ----
+train:
+  split: session             # session | random | participant (기본: session-wise)
+  val_ratio: 0.2             # (random 분할일 때만) 검증 비율
+  batch_size: 64
+  epochs: 40
+  lr: 0.001
+  weight_decay: 1.0e-4
+  label_smoothing: 0.05
+  num_workers: 0
+  device: auto               # auto | cpu | cuda
+  out_dir: runs/exp1
+
+# ---- 평가/디코딩 ----
+eval:
+  topk: [1, 5]
+  beam_width: 8              # 오토마타 제약 빔서치 폭
+  figures_dir: runs/exp1/figures
