@@ -1,0 +1,14 @@
+{
+  "n_test": 180,
+  "n_classes": 32,
+  "chance": 0.03125,
+  "top1": 0.9833333333333333,
+  "top5": 0.9944444444444445,
+  "per_scenario_top1": {
+    "far": 0.9833333333333333,
+    "near": 0.9833333333333333,
+    "noise": 0.9833333333333333
+  },
+  "syllable_recovery_before_automata": 0.9583333333333334,
+  "syllable_recovery_after_automata": 0.9583333333333334
+}
