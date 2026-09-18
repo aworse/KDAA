@@ -1,6 +1,6 @@
 # KDAA — Korean Dubeolsik Acoustic Attack
 
-OFFICIAL : https://ragx64.github.io/kdaa
+OFFICIAL : https://regx64.github.io/kdaa
 
 Recover **Dubeolsik Hangul input from keyboard sound** — an acoustic side-channel attack
 (ASCA) study. Keystroke audio → jamo classification (CNN) → **Dubeolsik
