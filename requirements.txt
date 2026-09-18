@@ -1,12 +1,12 @@
 # KDAA — Korean Dubeolsik Acoustic Attack
-# 검증 환경: Python 3.11
-torch>=2.1          # 모델/학습 (CPU로도 동작, GPU 있으면 자동 사용)
+# Verified on: Python 3.11
+torch>=2.1          # model/training (works on CPU; uses GPU automatically if present)
 numpy>=1.24
-scipy>=1.10         # WAV 로딩(scipy.io.wavfile), 신호처리
-scikit-learn>=1.3   # confusion_matrix, 지표
-matplotlib>=3.7     # 흑백 figure 출력
-pandas>=2.0         # metadata.csv 처리
+scipy>=1.10         # WAV loading (scipy.io.wavfile), signal processing
+scikit-learn>=1.3   # confusion_matrix, metrics
+matplotlib>=3.7     # grayscale figure output
+pandas>=2.0         # metadata.csv handling
 pyyaml>=6.0         # config
-# 선택(있으면 사용, 없어도 동작):
-# soundfile        # wav 외 포맷 로딩
-# tqdm             # 진행바
+# optional (used if present, works without):
+# soundfile        # loading formats other than wav
+# tqdm             # progress bar

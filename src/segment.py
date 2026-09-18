@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-세그멘테이션: 연속 세션 녹음 -> 개별 타건 클립.
-사용 위치:
-  - 데이터가 'sessions/' 형식(연속 녹음 + 온셋 라벨 CSV)일 때 clips/ 로 변환
+Segmentation: continuous session recording -> individual keystroke clips.
+Used by:
+  - converting 'sessions/' format (continuous recording + onset-label CSV) into clips/
   - CLI:  python -m src.segment --config config.yaml
-논문 파이프라인 1단계. 여기서 실패하면 이후가 모두 망가지므로,
-에너지 밴드패스 + 적응형 임계 + 최소간격 억제로 push-peak 온셋을 검출한다.
+Pipeline stage 1. If this fails everything downstream breaks, so we detect
+push-peak onsets with an energy bandpass + adaptive threshold + minimum-gap
+suppression.
 
-주의: 라벨 CSV의 onset_s가 주어지면 그 시점을 신뢰해 창을 자른다(지도 라벨).
-      onset_s가 없으면 자동 검출 온셋과 라벨 순서를 정렬(라벨 개수 기준).
+Note: if the label CSV provides onset_s, we trust those times and cut windows
+      there (supervised labels). If onset_s is absent, we align auto-detected
+      onsets to the label order (matched by count).
 """
 from __future__ import annotations
 import argparse
@@ -29,11 +31,11 @@ def bandpass(wav, sr, lo, hi):
 
 
 def detect_onsets(wav, sr, scfg):
-    """적응형 임계 기반 타건 온셋(초 단위) 리스트 반환."""
+    """Return keystroke onset times (seconds) via an adaptive energy threshold."""
     x = bandpass(wav, sr, scfg.band_hz[0], scfg.band_hz[1])
     frame = max(1, int(scfg.frame_ms * sr / 1000))
     hop = max(1, int(scfg.hop_ms * sr / 1000))
-    # 프레임 에너지
+    # frame energy
     n = 1 + (len(x) - frame) // hop if len(x) >= frame else 0
     energy = np.empty(n, dtype=np.float32)
     for i in range(n):
@@ -67,9 +69,9 @@ def cut_clip(wav, sr, onset_s, scfg):
 
 def segment_sessions(cfg):
     """
-    data/sessions/<sid>.wav + data/sessions/<sid>.csv 를 읽어
-    data/clips/*.wav + data/metadata.csv 를 생성.
-    세션 CSV 컬럼: onset_s(선택), key, jamo, shift, scenario, participant
+    Read data/sessions/<sid>.wav + data/sessions/<sid>.csv and produce
+    data/clips/*.wav + data/metadata.csv.
+    Session CSV columns: onset_s(optional), key, jamo, shift, scenario, participant
     """
     root = cfg.data.root
     sdir = os.path.join(root, "sessions")
@@ -85,8 +87,8 @@ def segment_sessions(cfg):
         else:
             det = detect_onsets(wav, sr, cfg.segment)
             if len(det) != len(labels):
-                print(f"[warn] {sid}: 검출 {len(det)} != 라벨 {len(labels)}, "
-                      f"앞에서부터 정렬")
+                print(f"[warn] {sid}: detected {len(det)} != labels {len(labels)}, "
+                      f"aligning from the start")
             onsets = det[:len(labels)] + [None] * max(0, len(labels) - len(det))
         for i, (onset, (_, lab)) in enumerate(zip(onsets, labels.iterrows())):
             if onset is None:
@@ -105,7 +107,7 @@ def segment_sessions(cfg):
     out = pd.DataFrame(rows)
     mpath = cfg.data.metadata
     out.to_csv(mpath, index=False)
-    print(f"[ok] {len(out)} 클립 -> {mpath}")
+    print(f"[ok] {len(out)} clips -> {mpath}")
     return out
 
 

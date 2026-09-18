@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-흑백(그레이스케일) figure 유틸.
-사용 위치: evaluate.py. 사용자 선호에 따라 결과는 표가 아니라 흑백 figure로 낸다.
-한글 폰트가 없을 수 있으므로 축/제목은 영문·기호 위주로 쓴다.
+Grayscale figure utilities.
+Used by: evaluate.py. Per user preference, results are reported as grayscale
+figures rather than tables. A Korean-capable font is registered automatically so
+jamo/syllable labels render; axes/titles otherwise stay ASCII-friendly.
 """
 from __future__ import annotations
 import numpy as np
@@ -10,9 +11,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+
 def _set_korean_font():
-    """한글 자모/음절 라벨이 깨지지 않도록 한국어 지원 폰트를 자동 등록.
-    Noto Sans CJK KR / Nanum / Malgun 등이 있으면 사용, 없으면 경고만."""
+    """Register a Korean-capable font so jamo/syllable labels don't break.
+    Uses Noto Sans CJK KR / Nanum / Malgun if available, else warns."""
     from matplotlib import font_manager as fm
     prefer = ["Noto Sans CJK KR", "Noto Sans KR", "NanumGothic",
               "Malgun Gothic", "AppleGothic", "Noto Sans CJK JP"]
@@ -21,7 +23,7 @@ def _set_korean_font():
         if cand in names:
             plt.rcParams["font.family"] = cand
             return cand
-    # ttc 등 이름 미등록 시 파일 경로로 직접 등록 시도
+    # try registering by file path when the name is not registered (e.g. .ttc)
     import glob
     for pat in ["/usr/share/fonts/opentype/noto/NotoSansCJK*.ttc",
                 "*NanumGothic*", "*malgun*"]:
@@ -34,8 +36,8 @@ def _set_korean_font():
             except Exception:
                 pass
     import warnings
-    warnings.warn("한국어 폰트를 찾지 못했습니다. figure의 한글 라벨이 깨질 수 있습니다. "
-                  "(예: apt-get install fonts-nanum)")
+    warnings.warn("No Korean font found; Hangul labels in figures may not render "
+                  "(e.g. apt-get install fonts-nanum).")
     return None
 
 
@@ -52,7 +54,7 @@ _set_korean_font()
 def confusion_matrix_fig(cm, labels, path, title="Confusion matrix"):
     cmn = cm / np.clip(cm.sum(1, keepdims=True), 1, None)
     fig, ax = plt.subplots(figsize=(max(6, len(labels) * 0.28),) * 2)
-    ax.imshow(1 - cmn, cmap="gray", vmin=0, vmax=1)          # 진할수록 값 큼
+    ax.imshow(1 - cmn, cmap="gray", vmin=0, vmax=1)          # darker = larger value
     ax.set_xticks(range(len(labels)))
     ax.set_yticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=90, fontsize=6)

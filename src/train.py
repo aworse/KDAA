@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-학습 스크립트.
-사용 위치 / 실행:
+Training script.
+Usage:
   python -m src.train --config config.yaml
   python -m src.train --set train.epochs=5 model.arch=coatnet_lite
-산출물(cfg.train.out_dir 아래):
-  best.pt (모델+라벨공간+cfg), labels.txt, train_df.csv/test_df.csv, history.json
+Outputs (under cfg.train.out_dir):
+  best.pt (model+labels+cfg), labels.txt, train_df.csv/test_df.csv, history.json
 """
 from __future__ import annotations
 import argparse

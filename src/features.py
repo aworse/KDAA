@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-mel-spectrogram 특징 추출.
-사용 위치: dataset.py (클립 -> 로그멜 이미지). 학습/평가에서 모델 입력이 된다.
-설계: Harrison et al.(2023) 스타일 — 로그 mel-spectrogram을 이미지로 다뤄 CNN에 입력.
-torchaudio가 있으면 사용하고, 없으면 scipy STFT + mel 필터뱅크로 동일 결과 산출.
+mel-spectrogram feature extraction.
+Used by: dataset.py (clip -> log-mel image), the model input for train/eval.
+Design: Harrison et al. (2023) style — treat the log mel-spectrogram as an image
+        fed to a CNN. Uses torchaudio if available, otherwise scipy STFT + a mel
+        filterbank producing the same result.
 """
 from __future__ import annotations
 import numpy as np
@@ -18,7 +19,7 @@ def _mel_to_hz(m):
 
 
 def mel_filterbank(sr, n_fft, n_mels, fmin, fmax):
-    """(n_mels, n_fft//2+1) mel 필터뱅크 행렬."""
+    """(n_mels, n_fft//2+1) mel filterbank matrix."""
     n_freqs = n_fft // 2 + 1
     fft_freqs = np.linspace(0, sr / 2, n_freqs)
     m_min, m_max = _hz_to_mel(fmin), _hz_to_mel(fmax)
@@ -34,7 +35,7 @@ def mel_filterbank(sr, n_fft, n_mels, fmin, fmax):
 
 
 class MelExtractor:
-    """설정(config.feature)을 받아 재사용 가능한 특징 추출기."""
+    """Reusable extractor built from config.feature."""
 
     def __init__(self, fcfg, sample_rate):
         self.sr = sample_rate
@@ -59,7 +60,7 @@ class MelExtractor:
         return (np.abs(Z) ** 2).astype(np.float32)      # (n_freqs, frames)
 
     def __call__(self, wav: np.ndarray) -> np.ndarray:
-        """반환: 로그멜 (1, n_mels, target_frames) float32, 클립별 정규화."""
+        """Return log-mel (1, n_mels, target_frames) float32, per-clip normalized."""
         wav = wav.astype(np.float32)
         if wav.size < self.win:
             wav = np.pad(wav, (0, self.win - wav.size))
@@ -67,7 +68,7 @@ class MelExtractor:
         mel = self.fb @ power                            # (n_mels, Tframes)
         logmel = np.log(mel + self.log_offset)
         logmel = self._fix_frames(logmel)
-        # per-클립 정규화 (녹음기기 도메인 시프트 완화)
+        # per-clip normalization (mitigates recording-device domain shift)
         logmel = (logmel - logmel.mean()) / (logmel.std() + 1e-6)
         return logmel[None, :, :].astype(np.float32)
 
@@ -75,8 +76,8 @@ class MelExtractor:
         T = x.shape[1]
         if T == self.target_frames:
             return x
-        if T > self.target_frames:                       # 중앙 크롭
+        if T > self.target_frames:                       # center crop
             s = (T - self.target_frames) // 2
             return x[:, s:s + self.target_frames]
-        pad = self.target_frames - T                     # 우측 패딩
+        pad = self.target_frames - T                     # right pad
         return np.pad(x, ((0, 0), (0, pad)), mode="edge")

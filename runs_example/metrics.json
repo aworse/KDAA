@@ -2,13 +2,13 @@
   "n_test": 180,
   "n_classes": 32,
   "chance": 0.03125,
-  "top1": 0.9833333333333333,
-  "top5": 0.9944444444444445,
+  "top1": 0.9611111111111111,
+  "top5": 0.9833333333333333,
   "per_scenario_top1": {
-    "far": 0.9833333333333333,
+    "far": 0.9666666666666667,
     "near": 0.9833333333333333,
-    "noise": 0.9833333333333333
+    "noise": 0.9333333333333333
   },
-  "syllable_recovery_before_automata": 0.9583333333333334,
-  "syllable_recovery_after_automata": 0.9583333333333334
+  "syllable_recovery_before_automata": 0.6527777777777778,
+  "syllable_recovery_after_automata": 0.9166666666666666
 }

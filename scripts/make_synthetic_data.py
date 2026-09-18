@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-합성 데이터 생성기 (스모크 테스트 / 파이프라인 검증용).
-사용 위치 / 실행:
+Synthetic data generator (smoke test / pipeline validation).
+Usage:
   python -m scripts.make_synthetic_data --config config.yaml
-생성물: data/sessions/<sid>.wav + <sid>.csv   (KDAA '세션' 포맷)
-  -> 이후 `python -m src.segment` 로 clips/ + metadata.csv 변환
+Produces: data/sessions/<sid>.wav + <sid>.csv  (KDAA 'session' format)
+  -> then `python -m src.segment` to convert into clips/ + metadata.csv
 
-주의: 이것은 '진짜 키보드 소리'가 아니라, 각 자모에 고유한 스펙트럼 서명을 부여한
-      합성 클릭음이다. 코드 파이프라인이 끝까지 동작하는지, 오토마타 보정이
-      효과가 있는지 확인하는 용도. 실제 실험에서는 이 스크립트 대신
-      진짜 녹음을 data/sessions/ 또는 data/clips/ 에 넣으면 된다.
+Note: this is NOT real keyboard audio. Each jamo gets a distinct spectral
+      signature (synthetic clicks) so we can check the pipeline runs end to end
+      and whether the automaton correction helps. In a real experiment, replace
+      this with actual recordings in data/sessions/ or data/clips/.
 """
 from __future__ import annotations
 import argparse
@@ -35,13 +35,13 @@ SENTENCES = [
 
 
 def jamo_signature(jamo, sr, n):
-    """자모별 고유 스펙트럼 서명 = 특정 formant 주파수들의 감쇠 정현파 합."""
+    """Per-jamo spectral signature = sum of decaying sinusoids at specific formants."""
     idx = LABELS.index(jamo) if jamo in LABELS else 0
     rng = np.random.RandomState(1000 + idx)
-    base = 800 + idx * 320                      # 자모마다 다른 중심 주파수
+    base = 800 + idx * 320                      # distinct center frequency per jamo
     freqs = base + rng.uniform(-120, 120, size=3) + np.array([0, 1500, 4200])
     t = np.arange(n) / sr
-    decay = np.exp(-t / (0.006 + 0.004 * (idx % 3)))   # 짧은 transient
+    decay = np.exp(-t / (0.006 + 0.004 * (idx % 3)))   # short transient
     sig = np.zeros(n, dtype=np.float32)
     for f, a in zip(freqs, [1.0, 0.5, 0.3]):
         sig += a * np.sin(2 * np.pi * f * t)
@@ -49,19 +49,18 @@ def jamo_signature(jamo, sr, n):
 
 
 def make_keystroke(jamo, sr, scenario):
-    """press peak + release peak(약하게) 의 이중 피크 클릭 생성."""
+    """Double-peak click: press peak + (weaker) release peak."""
     press = jamo_signature(jamo, sr, int(0.03 * sr))
     rel = 0.35 * jamo_signature(jamo, sr, int(0.02 * sr))
-    gap = int(np.random.uniform(0.04, 0.07) * sr)      # press-release 간격
+    gap = int(np.random.uniform(0.04, 0.07) * sr)      # press-release gap
     ks = np.zeros(gap + len(rel), dtype=np.float32)
     ks[:len(press)] += press[:len(ks)]
     ks[gap:gap + len(rel)] += rel
-    # Shift(된소리)는 동시 타건 느낌 -> 살짝 겹친 저역 성분 추가
     return ks
 
 
 def reverb(x, sr, scenario):
-    """시나리오별 채널 효과: 근접(near)=거의 없음, 원거리(far)=잔향, 소음(noise)=SNR↓."""
+    """Per-scenario channel: near=none, far=reverb tail, noise=handled via SNR below."""
     if scenario == "near":
         return x
     if scenario == "far":
@@ -70,7 +69,7 @@ def reverb(x, sr, scenario):
         ir[0] = 1.0
         y = np.convolve(x, ir)[:len(x) + ir_len]
         return y.astype(np.float32)
-    return x  # noise 는 아래에서 SNR 로 처리
+    return x  # 'noise' handled by SNR below
 
 
 def add_noise(x, scenario):
@@ -89,7 +88,7 @@ def build_session(sentences, sr, scenario, participant, seed):
     for sent in sentences:
         for j in decompose_text(sent):
             if j == "<sp>":
-                gap = int(rng.uniform(0.15, 0.25) * sr)   # 단어 사이 긴 공백
+                gap = int(rng.uniform(0.15, 0.25) * sr)   # longer gap between words
                 buf.append(np.zeros(gap, dtype=np.float32))
                 total_len += gap
                 continue
@@ -97,7 +96,7 @@ def build_session(sentences, sr, scenario, participant, seed):
             onset = total_len / sr
             buf.append(ks)
             total_len += len(ks)
-            gap = int(rng.uniform(0.06, 0.14) * sr)       # 타건 간 간격
+            gap = int(rng.uniform(0.06, 0.14) * sr)       # inter-keystroke gap
             buf.append(np.zeros(gap, dtype=np.float32))
             total_len += gap
             rows.append(dict(onset_s=onset, key="", jamo=j,
@@ -114,7 +113,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--sessions-per-cell", type=int, default=2,
-                    help="(참가자 x 시나리오) 셀당 세션 수")
+                    help="sessions per (participant x scenario) cell")
     ap.add_argument("--set", nargs="*", default=[])
     a = ap.parse_args()
     cfg = load_config(a.config, parse_overrides(a.set))
