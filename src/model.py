@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-분류 모델.
-사용 위치: train.py, evaluate.py, decode.py.
-설계: 로그멜(1,M,T)을 이미지로 받는 CNN. 기본은 CPU에서도 학습 가능한 SmallCNN.
-      arch='coatnet_lite'는 conv + 어텐션 블록을 얹은 경량 변형(옵션).
-분류 대상: 33개 base 자모(데이터에서 자동 결정된 클래스 수).
+Classification model.
+Used by: train.py, evaluate.py, decode.py.
+Design: a CNN taking log-mel (1,M,T) as an image. Default SmallCNN trains on CPU.
+        arch='coatnet_lite' adds an attention block on top of conv (optional).
+Targets: 33 base jamo (number of classes determined from the data).
 """
 from __future__ import annotations
 import torch
@@ -48,7 +48,7 @@ class SmallCNN(nn.Module):
 
 
 class _SelfAttn2d(nn.Module):
-    """공간을 토큰으로 펴서 적용하는 경량 MHSA (coatnet_lite용)."""
+    """Lightweight MHSA applied over flattened spatial tokens (for coatnet_lite)."""
     def __init__(self, dim, heads=4):
         super().__init__()
         self.norm = nn.LayerNorm(dim)

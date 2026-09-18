@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-재편 도구 A: 임의의 녹음 + 정답 텍스트 -> KDAA 'sessions/' 포맷으로 변환.
-사용 위치 / 실행:
-  # 각 녹음이 '알려진 프롬프트 문장'을 친 것일 때(키로거 없이 수집한 경우)
+Reorganize tool A: arbitrary recording + ground-truth text -> KDAA 'sessions/' format.
+Usage:
+  # when each recording types a KNOWN prompt sentence (collected without a keylogger)
   python -m scripts.ingest --mode known-text \
       --audio raw/p1_near_s0.wav --text "안녕하세요 반갑습니다" \
       --participant p1 --scenario near --sid p1_near_s0
 
-동작(known-text 모드):
-  정답 텍스트를 두벌식 자모열로 분해(decompose_text) -> 그 개수만큼의 라벨 생성.
-  onset_s는 비워두고 CSV를 쓴다. 이후 `python -m src.segment` 가 자동 온셋 검출로
-  타건을 찾아 라벨과 순서 정렬(개수가 맞아야 함).
-  => 키로거를 못 쓴 경우의 라벨링 경로.
+known-text mode:
+  Decompose the ground-truth text into a Dubeolsik jamo sequence (decompose_text)
+  and emit that many labels. onset_s is left blank; `python -m src.segment` then
+  auto-detects onsets and aligns them to the label order (counts must match).
+  => the labeling path for when a keylogger cannot be used.
 
-여러 파일을 한 번에 처리하려면 --manifest CSV 사용:
-  컬럼: audio, text, participant, scenario, sid
+Batch several files with a manifest CSV:
+  columns: audio, text, participant, scenario, sid
   python -m scripts.ingest --mode known-text --manifest raw/manifest.csv
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ def write_session(audio, text, participant, scenario, sid, root, sr):
         for j in jamos:
             shift = 1 if j in "ㄲㄸㅃㅆㅉㅒㅖ" else 0
             w.writerow(["", "", j, shift, scenario, participant])
-    print(f"[ok] {sid}: {len(jamos)} 라벨 (onset 미지정 -> segment에서 자동정렬), {len(wav)/sr:.1f}s")
+    print(f"[ok] {sid}: {len(jamos)} labels (onset unset -> aligned in segment), {len(wav)/sr:.1f}s")
     return len(jamos)
 
 
@@ -63,10 +63,10 @@ def main():
             write_session(r["audio"], r["text"], r["participant"],
                           r["scenario"], r["sid"], a.root, a.sample_rate)
     else:
-        assert a.audio and a.text and a.sid, "--audio --text --sid 필요"
+        assert a.audio and a.text and a.sid, "--audio --text --sid required"
         write_session(a.audio, a.text, a.participant, a.scenario,
                       a.sid, a.root, a.sample_rate)
-    print("다음: python -m src.segment  로 clips/ + metadata.csv 생성")
+    print("next: python -m src.segment  to build clips/ + metadata.csv")
 
 
 if __name__ == "__main__":

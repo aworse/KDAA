@@ -1,25 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-두벌식 한글 오토마타.
-사용 위치:
-  - decode.py 에서 자모 시퀀스 -> 음절 조합 및 제약 빔서치 디코딩에 사용
-  - evaluate.py 에서 '오토마타 필터 적용 전/후 음절 복원율' 계산에 사용
-  - dataset.py 에서 라벨(자모) 집합 검증에 사용
+Dubeolsik Hangul automaton.
+Used by:
+  - decode.py: compose jamo sequences into syllables and run constrained beam search
+  - evaluate.py: compute syllable-recovery rate with/without the automaton filter
+  - dataset.py: validate the label (jamo) set
 
-핵심 아이디어(KDAA의 차별점):
-  영어 스펠체크는 확률적 보정이지만, 두벌식 초성/중성/종성 결합 규칙은
-  거의 '결정적' 필터다. 유효하지 않은 자모 시퀀스를 대량으로 잘라내므로
-  음향 분류기의 약점을 언어권 연구보다 강하게 보정한다.
+Core idea (KDAA's differentiator):
+  An English spell-checker corrects probabilistically, but the Dubeolsik
+  cho/jung/jong composition rules act as an almost *deterministic* filter.
+  They discard impossible jamo sequences outright, so they constrain the acoustic
+  classifier more strongly than the language models used in English ASCA work.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
 # ---------------------------------------------------------------
-# 1) 두벌식 키맵 (QWERTY 물리키 -> 자모)
-#    분류기가 예측하는 라벨은 '한 타에 나오는 base 자모'다.
-#    복합모음(ㅘ 등)/겹받침(ㄳ 등)은 단일 키가 아니라 연타로 만들어지므로
-#    분류 라벨에는 들어가지 않고, 오토마타가 조합한다.
+# 1) Dubeolsik key map (physical QWERTY key -> jamo)
+#    The classifier's label is the *base jamo produced by one keystroke*.
+#    Compound vowels (ㅘ etc.) and compound finals (ㄳ etc.) are NOT single keys;
+#    they come from two keystrokes and are assembled by the automaton, so they
+#    are not classifier labels.
 # ---------------------------------------------------------------
 KEYMAP_BASE = {
     'q': 'ㅂ', 'w': 'ㅈ', 'e': 'ㄷ', 'r': 'ㄱ', 't': 'ㅅ',
@@ -29,21 +31,21 @@ KEYMAP_BASE = {
     'z': 'ㅋ', 'x': 'ㅌ', 'c': 'ㅊ', 'v': 'ㅍ',
     'b': 'ㅠ', 'n': 'ㅜ', 'm': 'ㅡ',
 }
-KEYMAP_SHIFT = {  # 된소리/ㅒㅖ (Shift 동반)
+KEYMAP_SHIFT = {  # tense consonants / ㅒㅖ (require Shift)
     'Q': 'ㅃ', 'W': 'ㅉ', 'E': 'ㄸ', 'R': 'ㄲ', 'T': 'ㅆ',
     'O': 'ㅒ', 'P': 'ㅖ',
 }
 
-# 물리키 위치(QWERTY 소문자) -> 클래스 기준으로 삼고 싶을 때를 위해 역맵도 제공
+# Reverse map (jamo -> physical key), in case class labels are keyed by position.
 JAMO_TO_KEY = {v: k for k, v in KEYMAP_BASE.items()}
 JAMO_TO_KEY.update({v: k for k, v in KEYMAP_SHIFT.items()})
 
-# 분류기 라벨로 쓰는 33개 base 자모 + 특수토큰
+# The 33 base jamo used as classifier labels + special tokens.
 CONSONANTS_BASE = list('ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ')
-CONSONANTS_TENSE = list('ㄲㄸㅃㅆㅉ')            # 된소리
+CONSONANTS_TENSE = list('ㄲㄸㅃㅆㅉ')            # tense consonants
 VOWELS_BASE = list('ㅏㅐㅑㅓㅔㅕㅗㅛㅜㅠㅡㅣ')
 VOWELS_SHIFT = list('ㅒㅖ')
-SPECIAL = ['<sp>']                              # 스페이스(선택)
+SPECIAL = ['<sp>']                              # space (optional)
 
 LABELS = CONSONANTS_BASE + CONSONANTS_TENSE + VOWELS_BASE + VOWELS_SHIFT
 ALL_CONSONANTS = set(CONSONANTS_BASE + CONSONANTS_TENSE)
@@ -59,51 +61,52 @@ def is_vowel(j: str) -> bool:
 
 
 # ---------------------------------------------------------------
-# 2) 유니코드 조합용 인덱스 테이블 (표준 한글 음절 = 0xAC00 + ...)
+# 2) Unicode composition tables (standard syllable = 0xAC00 + ...)
 # ---------------------------------------------------------------
-CHO = list('ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ')          # 19
-JUNG = list('ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ')     # 21
-JONG = [''] + list('ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ')  # 28
+CHO = list('ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ')          # 19 leading consonants
+JUNG = list('ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ')     # 21 medial vowels
+JONG = [''] + list('ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ')  # 28 finals
 
 CHO_IDX = {c: i for i, c in enumerate(CHO)}
 JUNG_IDX = {v: i for i, v in enumerate(JUNG)}
 JONG_IDX = {t: i for i, t in enumerate(JONG)}
 
-# 복합모음: (첫 모음, 둘째 모음) -> 복합모음
+# Compound vowels: (first vowel, second vowel) -> compound vowel
 VOWEL_COMBINE = {
     ('ㅗ', 'ㅏ'): 'ㅘ', ('ㅗ', 'ㅐ'): 'ㅙ', ('ㅗ', 'ㅣ'): 'ㅚ',
     ('ㅜ', 'ㅓ'): 'ㅝ', ('ㅜ', 'ㅔ'): 'ㅞ', ('ㅜ', 'ㅣ'): 'ㅟ',
     ('ㅡ', 'ㅣ'): 'ㅢ',
 }
-# 겹받침: (첫 자음, 둘째 자음) -> 겹받침
+# Compound finals: (first consonant, second consonant) -> compound final
 JONG_COMBINE = {
     ('ㄱ', 'ㅅ'): 'ㄳ', ('ㄴ', 'ㅈ'): 'ㄵ', ('ㄴ', 'ㅎ'): 'ㄶ',
     ('ㄹ', 'ㄱ'): 'ㄺ', ('ㄹ', 'ㅁ'): 'ㄻ', ('ㄹ', 'ㅂ'): 'ㄼ',
     ('ㄹ', 'ㅅ'): 'ㄽ', ('ㄹ', 'ㅌ'): 'ㄾ', ('ㄹ', 'ㅍ'): 'ㄿ',
     ('ㄹ', 'ㅎ'): 'ㅀ', ('ㅂ', 'ㅅ'): 'ㅄ',
 }
-# 겹받침 -> (앞, 뒤) 분해 (모음이 뒤따라오면 뒤 자음이 다음 초성으로 이동)
+# compound final -> (first, second); when a vowel follows, the 2nd moves to next cho
 JONG_SPLIT = {v: k for k, v in JONG_COMBINE.items()}
 
 
 def compose_syllable(cho: str | None, jung: str | None, jong: str) -> str:
-    """초/중/종 -> 완성형 음절 1글자. 불완전하면 자모를 그대로 이어붙인다."""
+    """Compose cho/jung/jong into one syllable char; concatenate jamo if incomplete."""
     if cho is not None and jung is not None and cho in CHO_IDX and jung in JUNG_IDX:
         code = 0xAC00 + (CHO_IDX[cho] * 21 + JUNG_IDX[jung]) * 28 + JONG_IDX.get(jong, 0)
         return chr(code)
-    # 불완전: 낱자 나열
+    # incomplete: list the jamo as-is
     return (cho or '') + (jung or '') + (jong or '')
 
 
 # ---------------------------------------------------------------
-# 3) 두벌식 오토마타 (실제 IME 동작 재현)
-#    feed(jamo) 로 자모를 한 타씩 흘려넣으면 음절을 조합/방출한다.
-#    orphan(고아 낱자: 초성만/중성만으로 끝난 것)을 표시해 언어 우도로 쓴다.
+# 3) Dubeolsik automaton (reproduces real IME behavior).
+#    feed(jamo) streams one keystroke at a time and composes/emits syllables.
+#    'orphan' jamo (a lone leading consonant / lone vowel) are flagged so they
+#    can be used as a language prior.
 # ---------------------------------------------------------------
 @dataclass
 class _Unit:
     text: str
-    orphan: bool          # 완성 음절이 아니면 True (초성단독/중성단독 등)
+    orphan: bool          # True if not a complete syllable (lone cho / lone jung, etc.)
 
 
 @dataclass
@@ -113,7 +116,7 @@ class Dubeolsik:
     jong: str = ''
     out: List[_Unit] = field(default_factory=list)
 
-    # --- 내부 상태 방출 ---
+    # --- emit the current buffer ---
     def _emit(self):
         if self.cho is None and self.jung is None and not self.jong:
             return
@@ -123,7 +126,7 @@ class Dubeolsik:
         self.cho, self.jung, self.jong = None, None, ''
 
     def feed(self, j: str):
-        # 스페이스/기타 토큰 -> 음절 경계
+        # space / other token -> syllable boundary
         if j == '<sp>':
             self._emit()
             self.out.append(_Unit(text=' ', orphan=False))
@@ -133,26 +136,26 @@ class Dubeolsik:
         elif is_vowel(j):
             self._feed_vowel(j)
         else:
-            # 알 수 없는 토큰: 경계 처리
+            # unknown token: treat as boundary
             self._emit()
             self.out.append(_Unit(text=j, orphan=True))
 
     def _feed_cons(self, c: str):
         if self.cho is None and self.jung is None:
-            self.cho = c                                   # 초성 시작
+            self.cho = c                                   # start leading consonant
         elif self.cho is not None and self.jung is None:
-            # 초성만 있는데 또 자음 -> 앞 초성은 고아 낱자로 방출
+            # leading consonant then another consonant -> emit the first as an orphan
             self._emit()
             self.cho = c
         elif self.jung is not None and not self.jong:
-            # CV 상태에서 자음 -> 종성 시도
+            # CV state, consonant arrives -> try as final
             if c in JONG_IDX and c != '':
                 self.jong = c
             else:
                 self._emit()
                 self.cho = c
         else:
-            # 이미 종성 있음 -> 겹받침 시도
+            # already have a final -> try to form a compound final
             if (self.jong, c) in JONG_COMBINE:
                 self.jong = JONG_COMBINE[(self.jong, c)]
             else:
@@ -161,18 +164,18 @@ class Dubeolsik:
 
     def _feed_vowel(self, v: str):
         if self.cho is None and self.jung is None:
-            self.jung = v                                  # 중성 단독(→ 고아 낱자)
+            self.jung = v                                  # lone vowel (-> orphan)
         elif self.cho is not None and self.jung is None:
-            self.jung = v                                  # CV 완성
+            self.jung = v                                  # complete CV
         elif self.jung is not None and not self.jong:
-            # 복합모음 시도
+            # try a compound vowel
             if (self.jung, v) in VOWEL_COMBINE:
                 self.jung = VOWEL_COMBINE[(self.jung, v)]
             else:
                 self._emit()
                 self.jung = v
         else:
-            # 종성 있는 상태에서 모음 -> 종성(마지막 자음)이 다음 초성으로 이동
+            # vowel after a final -> the final (last consonant) migrates to next cho
             moved, keep = self._steal_jong()
             self.jong = keep
             self._emit()
@@ -180,11 +183,11 @@ class Dubeolsik:
             self.jung = v
 
     def _steal_jong(self):
-        """모음이 왔을 때 종성에서 다음 초성으로 넘길 자음과 남길 종성 반환."""
-        if self.jong in JONG_SPLIT:            # 겹받침이면 뒤 자음만 이동
+        """When a vowel arrives, return (consonant moved to next cho, final kept)."""
+        if self.jong in JONG_SPLIT:            # compound final: only 2nd moves
             first, second = JONG_SPLIT[self.jong]
             return second, first
-        return self.jong, ''                    # 단일 종성이면 통째로 이동
+        return self.jong, ''                    # single final: the whole thing moves
 
     def flush(self) -> None:
         self._emit()
@@ -195,7 +198,7 @@ class Dubeolsik:
 
 
 def compose(jamo_seq: List[str]) -> str:
-    """자모 시퀀스 -> 조합된 한글 문자열."""
+    """jamo sequence -> composed Hangul string."""
     a = Dubeolsik()
     for j in jamo_seq:
         a.feed(j)
@@ -210,32 +213,33 @@ def compose_units(jamo_seq: List[str]) -> List[_Unit]:
 
 
 def count_orphans(jamo_seq: List[str]) -> int:
-    """조합 결과에서 완성되지 못한 고아 낱자 수(언어 우도 페널티에 사용)."""
+    """Number of incomplete 'orphan' units (used as a language-prior penalty)."""
     return sum(1 for u in compose_units(jamo_seq) if u.orphan)
 
 
 # ---------------------------------------------------------------
-# 4) 오토마타 제약 빔서치 디코딩
-#    입력: 타건별 자모 후보의 로그확률 (T, C)
-#    출력: 오토마타 우도(고아 낱자 페널티)로 보정한 최적 자모 시퀀스/텍스트
+# 4) Automaton-constrained beam search decoding.
+#    Input: per-keystroke jamo-candidate log-probabilities (T, C)
+#    Output: the best jamo sequence / text after re-ranking by the automaton
+#            prior (orphan penalty).
 # ---------------------------------------------------------------
 def constrained_beam_decode(
     logprobs,                      # np.ndarray (T, C)
-    idx2label: List[str],          # 클래스 idx -> 자모 라벨
+    idx2label: List[str],          # class idx -> jamo label
     beam_width: int = 8,
-    orphan_penalty: float = 2.0,   # 고아 낱자 1개당 감점(log 스케일)
-    cand_per_step: int = 5,        # 각 타건에서 고려할 상위 후보 수
+    orphan_penalty: float = 2.0,   # penalty per orphan jamo (log scale)
+    cand_per_step: int = 5,        # top candidates considered per keystroke
 ):
     """
-    반환: (best_jamo_seq: List[str], best_text: str, best_score: float)
-    점수 = Σ 분류기 logprob  -  orphan_penalty * (고아 낱자 수)
+    Returns: (best_jamo_seq: List[str], best_text: str, best_score: float)
+    score = sum(classifier logprob) - orphan_penalty * (number of orphan jamo)
     """
     import numpy as np
     T, C = logprobs.shape
-    # 각 스텝 상위 후보 idx
+    # top candidates per step
     topc = np.argsort(-logprobs, axis=1)[:, :cand_per_step]
 
-    # 빔: (jamo_seq(list), cum_logprob)
+    # beam entries: (jamo_seq(list), cum_logprob)
     beams = [([], 0.0)]
     for t in range(T):
         new = []
@@ -243,7 +247,7 @@ def constrained_beam_decode(
             for ci in topc[t]:
                 j = idx2label[ci]
                 new.append((seq + [j], lp + float(logprobs[t, ci])))
-        # 오토마타 우도로 재랭킹 후 상위 beam_width 유지
+        # re-rank by the automaton prior, keep top beam_width
         scored = []
         for seq, lp in new:
             score = lp - orphan_penalty * count_orphans(seq)
@@ -257,7 +261,7 @@ def constrained_beam_decode(
 
 
 def greedy_decode(logprobs, idx2label: List[str]):
-    """오토마타 미적용(비교 기준선): argmax 자모를 그대로 조합."""
+    """No automaton (baseline): compose the argmax jamo directly."""
     import numpy as np
     idxs = np.argmax(logprobs, axis=1)
     seq = [idx2label[i] for i in idxs]
@@ -265,22 +269,22 @@ def greedy_decode(logprobs, idx2label: List[str]):
 
 
 # ---------------------------------------------------------------
-# 5) 역변환: 한글 텍스트 -> 두벌식 base 자모 타건 시퀀스
-#    사용 위치: make_synthetic_data.py (정답 텍스트 -> 타건열 생성),
-#    데이터 검증(조합-분해 왕복 테스트).
+# 5) Inverse transform: Hangul text -> Dubeolsik base-jamo keystroke sequence.
+#    Used by: make_synthetic_data.py (ground-truth text -> keystrokes),
+#    dataset validation (compose/decompose round-trip).
 # ---------------------------------------------------------------
-VOWEL_SPLIT = {v: k for k, v in VOWEL_COMBINE.items()}   # 복합모음 -> (기본, 기본)
+VOWEL_SPLIT = {v: k for k, v in VOWEL_COMBINE.items()}   # compound vowel -> (base, base)
 
 
 def decompose_text(text: str) -> List[str]:
-    """한글 문자열 -> 실제로 눌러야 하는 base 자모 키 시퀀스."""
+    """Hangul string -> the sequence of base jamo keys actually pressed."""
     seq: List[str] = []
     for ch in text:
         if ch == ' ':
             seq.append('<sp>')
             continue
         code = ord(ch)
-        if 0xAC00 <= code <= 0xD7A3:                     # 완성형 음절
+        if 0xAC00 <= code <= 0xD7A3:                     # composed syllable
             s = code - 0xAC00
             cho = CHO[s // (21 * 28)]
             jung = JUNG[(s % (21 * 28)) // 28]
@@ -289,7 +293,7 @@ def decompose_text(text: str) -> List[str]:
             seq.extend(VOWEL_SPLIT.get(jung, (jung,)))
             if jong:
                 seq.extend(JONG_SPLIT.get(jong, (jong,)))
-        elif ch in ALL_CONSONANTS or ch in ALL_VOWELS:   # 낱자
+        elif ch in ALL_CONSONANTS or ch in ALL_VOWELS:   # bare jamo
             seq.append(ch)
-        # 그 외 문자는 무시(데이터 생성용)
+        # anything else is ignored (for data generation)
     return seq

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-데이터 증강.
-사용 위치: dataset.py (학습 split 에만 적용).
-설계: 배경소음 조건은 '독립변인'이므로 증강으로 대체하지 않고 실제 녹음을 쓴다.
-      여기서의 노이즈 믹싱은 일반화 향상을 위한 보조 증강일 뿐이다.
+Data augmentation.
+Used by: dataset.py (training split only).
+Design: the background-noise condition is an *independent variable*, so it is NOT
+        replaced by augmentation — it must be recorded for real. The noise mixing
+        here is only an auxiliary augmentation to improve generalization.
 """
 from __future__ import annotations
 import numpy as np
@@ -17,7 +18,7 @@ def time_shift(wav, sr, max_ms):
 
 
 def mix_noise(wav, snr_db_range, prob):
-    """가우시안 노이즈를 지정 SNR 범위로 랜덤 믹싱."""
+    """Mix Gaussian noise at a random SNR within the given range."""
     if np.random.rand() > prob:
         return wav
     snr = np.random.uniform(*snr_db_range)
@@ -29,7 +30,7 @@ def mix_noise(wav, snr_db_range, prob):
 
 
 def spec_augment(logmel, max_t, max_f):
-    """로그멜 (1, M, T) 에 시간/주파수 마스크. 입력을 복사하지 않고 in-place."""
+    """Time/frequency masking on log-mel (1, M, T), in place (no copy)."""
     _, M, T = logmel.shape
     if max_t > 0 and T > max_t:
         w = np.random.randint(0, max_t + 1)

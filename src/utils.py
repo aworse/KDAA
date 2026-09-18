@@ -1,6 +1,6 @@
 """
-공용 유틸.
-사용 위치: 여러 모듈에서 import.
+Shared utilities.
+Used by: several modules.
 """
 from __future__ import annotations
 import os
@@ -9,7 +9,7 @@ import numpy as np
 
 
 def set_seed(seed: int) -> None:
-    """재현성 고정."""
+    """Fix seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     try:
@@ -26,7 +26,7 @@ def ensure_dir(path: str) -> str:
 
 
 def pick_device(pref: str = "auto"):
-    """torch device 선택."""
+    """Choose a torch device."""
     import torch
     if pref == "cpu":
         return torch.device("cpu")
@@ -36,7 +36,7 @@ def pick_device(pref: str = "auto"):
 
 
 def try_tqdm(iterable, **kw):
-    """tqdm 있으면 진행바, 없으면 그대로."""
+    """Use tqdm progress bar if available, otherwise pass through."""
     try:
         from tqdm import tqdm
         return tqdm(iterable, **kw)

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-공격 데모: 새 오디오(연속 세션 녹음 또는 클립 폴더) -> 복원 텍스트.
-사용 위치 / 실행:
-  # 연속 녹음 한 파일 공격
+Attack demo: new audio (continuous session recording or clip folder) -> recovered text.
+Usage:
+  # attack one continuous recording
   python -m src.decode --run runs/exp1 --wav some_session.wav
-  # 이미 잘린 클립 폴더 공격(파일명 순 정렬)
+  # attack a folder of pre-segmented clips (sorted by filename)
   python -m src.decode --run runs/exp1 --clips path/to/clips_dir
-전체 공격 파이프라인(세그멘테이션 -> 특징 -> 분류 -> 오토마타 제약 빔서치)을
-하나로 묶어 실제 '엿듣기 -> 텍스트' 복원을 시연한다.
+Chains the whole attack pipeline (segmentation -> features -> classification ->
+automaton-constrained beam search) to demonstrate 'eavesdrop -> text' recovery.
 """
 from __future__ import annotations
 import argparse
@@ -74,8 +74,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--run", default=None)
-    ap.add_argument("--wav", default=None, help="연속 세션 녹음 wav")
-    ap.add_argument("--clips", default=None, help="잘린 클립 폴더")
+    ap.add_argument("--wav", default=None, help="continuous session recording wav")
+    ap.add_argument("--clips", default=None, help="folder of pre-segmented clips")
     ap.add_argument("--set", nargs="*", default=[])
     a = ap.parse_args()
     cfg = load_config(a.config, parse_overrides(a.set))
@@ -86,9 +86,9 @@ def main():
     elif a.clips:
         text, seq = decode_clip_dir(a.clips, run_dir, cfg, device)
     else:
-        raise SystemExit("--wav 또는 --clips 중 하나를 지정하세요")
-    print("복원 자모:", " ".join(seq))
-    print("복원 텍스트:", text)
+        raise SystemExit("specify one of --wav or --clips")
+    print("recovered jamo:", " ".join(seq))
+    print("recovered text:", text)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-평가 스크립트.
-사용 위치 / 실행:
+Evaluation script.
+Usage:
   python -m src.evaluate --config config.yaml --run runs/exp1
-산출물(cfg.eval.figures_dir):
+Outputs (cfg.eval.figures_dir):
   confusion_matrix.png, topk_accuracy.png, per_scenario_accuracy.png,
   syllable_recovery.png, training_curve.png, metrics.json
-지표(사용자 선호에 따라 표 대신 흑백 figure로 출력):
-  * top-1 / top-5 정확도 (chance = 1/클래스수 기준선 표시)
-  * 시나리오(근접/원거리/배경소음)별 정확도 (독립변인 효과)
-  * 혼동행렬
-  * '오토마타 필터 적용 전(greedy) vs 후(제약 빔서치)' 음절 복원율
+Metrics (reported as grayscale figures instead of tables, per user preference):
+  * top-1 / top-5 accuracy (chance = 1/num_classes baseline shown)
+  * per-scenario accuracy (near/far/noise) -> independent-variable effect
+  * confusion matrix
+  * syllable recovery 'before (greedy) vs after (constrained beam)' the automaton
 """
 from __future__ import annotations
 import argparse
@@ -33,7 +33,7 @@ from . import figures as FIG
 
 
 def _clip_order_key(cid: str):
-    """clip_id '<sid>_<idx>' 에서 정렬용 (sid, idx)."""
+    """From clip_id '<sid>_<idx>' return (sid, idx) for ordering."""
     parts = str(cid).rsplit("_", 1)
     if len(parts) == 2 and parts[1].isdigit():
         return parts[0], int(parts[1])
@@ -67,10 +67,10 @@ def topk_acc(logprobs, y, k):
 
 def syllable_recovery(test_df, logprobs, meta, ls, beam_width, orphan_penalty=2.0):
     """
-    세션별로 타건 순서를 복원해 정답 텍스트를 만들고,
-    (a) greedy(오토마타 미적용) (b) 제약 빔서치(오토마타 적용) 의
-    문자 단위 음절 복원율을 계산.
-    반환: dict(before=.., after=.., examples=[(gt, before, after), ...])
+    Per session, restore keystroke order to build the ground-truth text, then
+    compute character-level syllable recovery for
+    (a) greedy (no automaton) and (b) constrained beam (with automaton).
+    Returns: dict(before=.., after=.., examples=[(gt, before, after), ...])
     """
     df = test_df.copy().reset_index(drop=True)
     df["_row"] = range(len(df))
@@ -104,7 +104,7 @@ def syllable_recovery(test_df, logprobs, meta, ls, beam_width, orphan_penalty=2.
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
-    ap.add_argument("--run", default=None, help="학습 산출 디렉토리(기본 cfg.train.out_dir)")
+    ap.add_argument("--run", default=None, help="training output dir (default cfg.train.out_dir)")
     ap.add_argument("--set", nargs="*", default=[])
     a = ap.parse_args()
     cfg = load_config(a.config, parse_overrides(a.set))
@@ -113,7 +113,7 @@ def main():
     figdir = cfg.eval.figures_dir
     os.makedirs(figdir, exist_ok=True)
 
-    # test 셋: 학습 때 저장한 test_df.csv 사용(동일 분할 보장)
+    # test set: use test_df.csv saved during training (guarantees identical split)
     te_path = os.path.join(run_dir, "test_df.csv")
     if os.path.exists(te_path):
         te_df = pd.read_csv(te_path)
@@ -137,7 +137,7 @@ def main():
                 ylabel="accuracy", title="Key(jamo) classification accuracy",
                 baseline=metrics["chance"])
 
-    # --- 시나리오별 정확도 (독립변인) ---
+    # --- per-scenario accuracy (independent variable) ---
     scen_names = sorted(set(m["scenario"] for m in meta))
     pred = lp.argmax(1)
     scen_acc = []
@@ -149,12 +149,12 @@ def main():
                 ylabel="top-1 accuracy", title="Accuracy by attack scenario (IV)",
                 baseline=metrics["chance"])
 
-    # --- 혼동행렬 ---
+    # --- confusion matrix ---
     cm = confusion_matrix(y, pred, labels=list(range(len(ls))))
     FIG.confusion_matrix_fig(cm, ls.labels, os.path.join(figdir, "confusion_matrix.png"),
                              title="Confusion matrix (jamo)")
 
-    # --- 음절 복원율: 오토마타 전/후 ---
+    # --- syllable recovery: before/after automaton ---
     rec = syllable_recovery(te_df, lp, meta, ls, cfg.eval.beam_width)
     metrics["syllable_recovery_before_automata"] = rec["before"]
     metrics["syllable_recovery_after_automata"] = rec["after"]
@@ -164,7 +164,7 @@ def main():
                 ylabel="syllable char accuracy",
                 title="Syllable recovery: automata filter effect")
 
-    # --- 학습곡선 ---
+    # --- training curve ---
     hp = os.path.join(run_dir, "history.json")
     if os.path.exists(hp):
         with open(hp) as f:
@@ -175,7 +175,7 @@ def main():
 
     print("=== metrics ===")
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
-    print("\n=== 음절 복원 예시 (정답 / greedy / +automata) ===")
+    print("\n=== syllable recovery examples (ground truth / greedy / +automata) ===")
     for gt, b, af in rec["examples"]:
         print(f"  GT     : {gt}")
         print(f"  greedy : {b}")

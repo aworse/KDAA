@@ -1,224 +1,244 @@
-# KDAA 데이터 측정·재편 프로토콜
+# KDAA Data Measurement & Reorganization Protocol
 
-키보드 타건음으로 두벌식 한글 입력을 복원하는 실험의 **데이터 수집 전 과정**.
-이 문서 하나로 "무엇을, 어떻게 녹음하고, 어떤 폴더 구조로 정리해서 코드에 넣는가"가 끝난다.
+The complete data-collection procedure for the experiment that recovers Dubeolsik
+Hangul input from keystroke sounds. This single document covers "what to record, how,
+and how to organize it into the format the code expects."
 
-전체 흐름:
+Overall flow:
 ```
-① 준비(하드웨어/소프트웨어)  →  ② 세션 녹음(record_session.py)
-      →  ③ 재편·검증(validate_dataset.py)  →  ④ 세그멘테이션(src.segment)
-      →  ⑤ 학습·평가(src.train / src.evaluate)
+① prepare (hardware/software)  →  ② record sessions (record_session.py)
+      →  ③ reorganize & validate (validate_dataset.py)  →  ④ segment (src.segment)
+      →  ⑤ train & evaluate (src.train / src.evaluate)
 ```
 
 ---
 
-## 0. 무엇을 얼마나 모으는가 (목표 수량)
+## 0. What and how much to collect (targets)
 
-- 최종 단위는 **타건 클립 1개 = 자모 1개**. 분류기는 33개 base 자모를 맞힌다.
-- **자모당 최소 25타건** (Harrison et al. 기준). `scripts/prompts_ko.txt` 한 벌을
-  끝까지 치면 참가자 1명당 자모당 25회 이상이 자동으로 채워진다(총 약 1,840타건).
-- **독립변인 = 공격 시나리오 3종**: `near`(근접) / `far`(원거리) / `noise`(배경소음).
-- **참가자 3명**(본인 포함). 각 참가자가 각 시나리오에서 **세션 2회 이상**.
-  - 세션 2회 이상이 필요한 이유: 학습/평가를 **세션 단위로 분리**(session-wise)해야
-    정확도가 과대평가되지 않는다. 시나리오마다 세션이 1개뿐이면 분리가 불가능하다.
+- The final unit is **one keystroke clip = one jamo**. The classifier predicts one of
+  33 base jamo.
+- **>= 25 keystrokes per jamo** (Harrison et al.). Typing one full pass of
+  `scripts/prompts_ko.txt` automatically yields >= 25/jamo per participant
+  (~1,840 keystrokes total).
+- **Independent variable = 3 attack scenarios**: `near` / `far` / `noise`.
+- **3 participants** (including yourself). Each participant records **>= 2 sessions** in
+  each scenario.
+  - Why >= 2 sessions: train/eval must be separated **by session** (session-wise) or
+    accuracy is overestimated. With only one session per scenario, separation is
+    impossible.
 
-권장 최소 설계: **3 참가자 × 3 시나리오 × 2 세션 = 18 세션**.
-세션당 프롬프트 한 벌(약 1,840타건) → 총 약 3만 타건. 시간이 부족하면 프롬프트를
-절반으로 나눠 세션 A/B로 쳐도 된다(두 세션 합쳐 한 벌 커버).
-
----
-
-## 1. 준비물 (예산 50만원 배분안)
-
-핵심 원칙: **키보드는 처음부터 끝까지 한 대로 통일**한다(통제변인). 마이크만 시나리오별로 바꾼다.
-
-- **근접 마이크**: USB 콘덴서 또는 라발리에(핀) 마이크 1개 — 키보드 20~30cm.
-  (예: 저가 USB 콘덴서 5~8만원대) → `near` 조건.
-- **원거리 마이크**: 지향성(샷건) 또는 같은 콘덴서를 1.5~2m에 배치 → `far` 조건.
-  마이크 하나를 위치만 바꿔 near/far를 겸해도 된다(게인 고정이 더 중요).
-- **키보드 1대** (기계식 청축이 가장 잘 털리지만, 실험 취지상 '흔한 노트북/멤브레인'도
-  의미 있음 — 무엇을 쓰든 **전 세션 동일 기종**).
-- **삼각대/마이크 스탠드**, USB 오디오 인터페이스(선택), 방음 없는 일반 실습실.
-- 남는 예산은 예비 마이크/케이블/외장 SSD(원본 백업)에.
-
-> 마이크를 2종 살지, 1종을 위치만 바꿀지는 예산에 맞춰 정하되, **게인(입력 감도)을
-> 세션 내내 고정**하는 게 마이크 종류보다 결과에 더 크게 작용한다.
+Recommended minimum design: **3 participants × 3 scenarios × 2 sessions = 18 sessions**.
+One prompt pass (~1,840 keystrokes) per session → ~30k keystrokes total. If time is short,
+split the prompt set into halves and type them as sessions A/B (two sessions cover one pass).
 
 ---
 
-## 2. 소프트웨어 설치 (녹음용 PC)
+## 1. Equipment (budget allocation)
+
+Core principle: **use one keyboard from start to finish** (control variable). Only the
+microphone changes per scenario.
+
+- **Near mic**: one USB condenser or lavalier mic, 20–30 cm from the keyboard → `near`.
+- **Far mic**: a shotgun/directional mic, or the same condenser placed 1.5–2 m away →
+  `far`. One mic moved between positions is fine (gain consistency matters more).
+- **One keyboard** (clicky mechanical leaks the most, but a common laptop/membrane board
+  is also meaningful for the study — whatever you use, keep the **same model for all
+  sessions**).
+- **Tripod/mic stand**, a USB audio interface (optional), an ordinary lab room (no need
+  for a treated room).
+- Spend leftover budget on a spare mic/cable and an external SSD (raw backup).
+
+> Whether you buy two mics or move one is up to budget, but **keeping the input gain fixed
+> across a session** affects results more than the mic type.
+
+---
+
+## 2. Software (recording PC)
 
 ```bash
 pip install sounddevice pynput scipy numpy
 # Linux: sudo apt-get install libportaudio2
-# macOS: 시스템 설정 > 개인정보 보호 > '입력 모니터링'에서 터미널(또는 python) 허용
-# Windows: 관리자 권한 터미널 권장
+# macOS: System Settings > Privacy & Security > Input Monitoring -> allow terminal/python
+# Windows: run the terminal as Administrator
 ```
 
-분석용 PC에는 프로젝트 `requirements.txt`(torch 등)만 있으면 된다. 녹음 PC와 분석 PC는
-같아도 되고 달라도 된다.
+The analysis PC only needs the project `requirements.txt` (torch etc.). The recording and
+analysis PCs can be the same or different.
 
 ---
 
-## 3. 시나리오 정의와 마이크 배치 (독립변인)
+## 3. Scenario definitions & mic placement (independent variable)
 
-세 조건은 **마이크와 환경만 다르고, 키보드·타이핑·코퍼스는 동일**해야 한다.
+The three conditions must differ **only in mic/environment** — keyboard, typing, and
+corpus stay identical.
 
-- **`near` (근접)**: 마이크를 키보드에서 **20~30cm**. 조용한 방. 목표 SNR 높음.
-  - 공격 시나리오 해석: 같은 책상 위 스마트폰/노트북 내장 마이크.
-- **`far` (원거리)**: 같은 방, 마이크를 **1.5~2m**. 조용하게 유지.
-  - 여기서 성능이 떨어지는 주원인은 SNR보다 **잔향(reverberation)** — transient가
-    뭉개져 위치 정보가 사라진다. 방을 바꾸지 말고 거리만 바꿔 이 효과를 분리한다.
-- **`noise` (배경소음)**: 근접 거리로 되돌리되(near와 같은 20~30cm), **실제 배경소음을
-  틀어 놓는다** — 카페 소음/에어컨/대화 소리 등. SNR을 의도적으로 낮춘 조건.
-  - 중요: 배경소음은 **실제로 재생하며 녹음**한다. 학습 시 코드가 노이즈를 합성 증강할 수
-    있지만, 그건 보조 증강일 뿐 **독립변인 조건을 증강으로 대체하지 말 것.**
+- **`near`**: mic **20–30 cm** from the keyboard. Quiet room. High SNR.
+  - Attack interpretation: a phone/laptop mic on the same desk.
+- **`far`**: same room, mic at **1.5–2 m**. Keep it quiet.
+  - The main cause of degradation here is **reverberation**, not SNR — the transient
+    smears and location cues vanish. Change only distance, not the room, to isolate this.
+- **`noise`**: back at close distance (same 20–30 cm as `near`), but **play real
+  background noise** — café noise / AC / conversation. An intentionally low-SNR condition.
+  - Important: **actually play and record the noise.** Training may add synthetic noise
+    augmentation, but that is auxiliary — **do not replace an independent-variable
+    condition with augmentation.**
 
-**통제변인 체크리스트(모든 세션 동일하게)**:
-- 같은 키보드, 같은 책상/의자, 같은 앉은 자세와 손 위치
-- 마이크 게인 고정, 샘플레이트 48kHz 고정, 모노
-- 같은 코퍼스(`prompts_ko.txt`), 같은 타이핑 습관(급하게/천천히 섞지 말 것)
-- 세 시나리오를 **같은 날 연속으로** 녹음하면 기기 상태 변화를 줄일 수 있다
+**Control-variable checklist (identical across all sessions)**:
+- Same keyboard, same desk/chair, same seated posture and hand position
+- Fixed mic gain, fixed sample rate 48 kHz, mono
+- Same corpus (`prompts_ko.txt`), same typing habit (don't mix fast/slow)
+- Recording all three scenarios back-to-back on the same day reduces equipment drift
 
 ---
 
-## 4. 세션 녹음 절차 (권장: 키로거 방식)
+## 4. Session recording procedure (recommended: keylogger method)
 
-이 방식이 **라벨링을 자동화**한다. 물리 키를 타임스탬프와 함께 기록하므로,
-어떤 자모가 몇 초에 눌렸는지(onset_s + jamo)를 사람이 손대지 않고 얻는다.
-한글 IME를 켜든 끄든 상관없다 — **물리 QWERTY 키**를 잡아 두벌식 키맵으로 변환한다.
+This method **automates labeling.** It logs physical keys with timestamps, so you get
+which jamo was pressed at which second (onset_s + jamo) with no manual work. It doesn't
+matter whether the Hangul IME is on — it captures **physical QWERTY keys** and maps them
+via the Dubeolsik keymap.
 
-세션 하나 녹음:
+Record one session:
 ```bash
 python -m scripts.record_session --participant p1 --scenario near --sid p1_near_s0
-# 프롬프트가 화면에 뜬다 -> [Enter]로 녹음 시작 -> 프롬프트대로 타이핑 -> [ESC] 종료
+# prompts appear -> [Enter] to start -> type the prompts -> [ESC] to stop
 ```
 
-- `--sid` 규칙: **`<참가자>_<시나리오>_s<번호>`** (예: `p2_far_s1`). 이 이름이 곧 세션 ID이고,
-  세그멘테이션 후 클립 순서 정렬의 기준이 된다.
-- 끝나면 `data/sessions/p1_near_s0.wav` + `.csv`가 자동 생성된다.
-- 세션마다 `--sid`만 바꿔 18번 반복(참가자·시나리오·번호 조합).
+- `--sid` convention: **`<participant>_<scenario>_s<number>`** (e.g. `p2_far_s1`). This
+  name is the session id and the basis for ordering clips after segmentation.
+- On finish, `data/sessions/p1_near_s0.wav` + `.csv` are generated automatically.
+- Repeat 18 times, changing only `--sid` (participant × scenario × number combos).
 
-**녹음 중 수칙**:
-- 프롬프트 문장만 친다. **실제 비밀번호·개인정보·실명 절대 입력 금지.**
-- 오타가 나면 백스페이스로 지우지 말고 그냥 다음 줄로 넘어간다(백스페이스는 자모가 아니라
-  라벨에서 무시되지만, 지운 글자와 실제 소리가 어긋나면 정렬이 틀어진다). 크게 틀리면
-  그 세션을 버리고 다시 친다.
-- 한 세션은 **한 번에 끊김 없이**. 중간에 멈추면 세션을 나눠 `s0`, `s1`로.
+**Rules while recording**:
+- Type only the prompt sentences. **Never type real passwords / personal info / real names.**
+- On a typo, don't backspace — just move to the next line (backspace is ignored as a
+  label, but a deleted char misaligns sound vs. label). On a big mistake, discard that
+  session and re-record.
+- Record each session **in one continuous take.** If you must pause, split into `s0`, `s1`.
 
-**녹음 전 30초 체크**: 게인이 너무 커서 클리핑(파형이 잘림)나지 않는지, 너무 작아
-파형이 바닥에 붙지 않는지 파형을 눈으로 확인. `near`에서 최대 진폭이 대략 -6dB 근처가 이상적.
+**30-second pre-check**: verify the gain isn't clipping (waveform flattened at the top)
+nor too small (waveform stuck at the floor). For `near`, a peak around -6 dB is ideal.
 
 ---
 
-## 5. 세션 녹음 절차 (보조: known-text 방식)
+## 5. Session recording procedure (fallback: known-text method)
 
-키로거를 못 쓰는 환경(권한 문제 등)이면, **알려진 문장**을 녹음해두고 나중에 라벨을 붙인다.
+If a keylogger can't be used (permissions etc.), record a **known** sentence and label it
+afterward.
 
-1. 아무 녹음기로 `prompts_ko.txt`의 한 문장(또는 한 벌)을 치는 소리를 `raw/*.wav`로 저장.
-   무엇을 쳤는지 텍스트를 정확히 기록해 둔다.
-2. 변환:
+1. With any recorder, capture the sound of typing one sentence (or one pass) of
+   `prompts_ko.txt` as `raw/*.wav`. Record exactly what was typed as text.
+2. Convert:
    ```bash
    python -m scripts.ingest --mode known-text \
        --audio raw/p1_near_s0.wav --text "안녕하세요 반갑습니다 ..." \
        --participant p1 --scenario near --sid p1_near_s0
    ```
-   여러 개면 매니페스트 CSV로 한 번에:
+   For many files, batch with a manifest CSV:
    ```bash
-   # raw/manifest.csv 컬럼: audio,text,participant,scenario,sid
+   # raw/manifest.csv columns: audio,text,participant,scenario,sid
    python -m scripts.ingest --mode known-text --manifest raw/manifest.csv
    ```
-3. 이 방식은 `onset_s`가 비어 있어, 세그멘테이션이 **자동 온셋 검출로 타건을 찾아
-   라벨 순서와 정렬**한다. **검출 개수 = 라벨 개수**가 맞아야 정확히 정렬된다.
-   - 붙여치기(연타)가 많으면 검출이 라벨보다 적게 나와 뒤 라벨이 밀린다.
-   - 그래서 known-text 방식은 **천천히, 타건 간격을 벌려** 치는 게 좋다.
-   - `src.segment` 실행 시 `검출 N != 라벨 M` 경고가 뜨면 그 세션은 버리거나
-     `config.yaml`의 `segment.onset_percentile`/`min_gap_ms`를 조정해 다시 검출한다.
+3. Here `onset_s` is empty, so segmentation **auto-detects onsets and aligns them to the
+   label order.** The **detected count must equal the label count** for correct alignment.
+   - Many run-together keystrokes → fewer detections than labels → later labels shift.
+   - So the known-text method works best when you type **slowly, with wide gaps.**
+   - If `src.segment` prints a `detected N != labels M` warning, discard that session or
+     tune `segment.onset_percentile` / `min_gap_ms` in `config.yaml` and re-detect.
 
-> 정확도·손이 덜 가는 정도 모두 **키로거 방식이 우월**하다. known-text는 최후의 대안.
+> The keylogger method is superior in both accuracy and effort. known-text is a last resort.
 
 ---
 
-## 6. 재편: 폴더 구조 만들고 검증하기
+## 6. Reorganize: build the folder structure and validate
 
-녹음이 끝나면 `data/sessions/`에 `<sid>.wav` + `<sid>.csv` 쌍들이 쌓인다.
-이게 KDAA '세션 포맷'이다. 여기서 두 단계:
+After recording, `data/sessions/` holds `<sid>.wav` + `<sid>.csv` pairs — the KDAA
+"session format." Two steps from here:
 
-**(1) 정합성 검증** — 세그멘테이션 전에 먼저 돌려 문제를 잡는다:
+**(1) Integrity check** — run before segmentation to catch problems early:
 ```bash
 python -m scripts.validate_dataset --config config.yaml
 ```
-점검: 필수 컬럼, 파일 실재, 샘플레이트 통일, **허용되지 않은 jamo 라벨**(복합모음 ㅘ나
-겹받침 ㄳ을 쪼개지 않은 실수), 자모별/시나리오별/참가자별 타건 수, 세션 수.
-`docs/validate_jamo_counts.png`, `docs/validate_scenario_counts.png`(흑백)로 커버리지를 본다.
-결과가 `FAIL`이면 오류부터 고친다.
+Checks: required columns, file existence, sample-rate consistency, **disallowed jamo
+labels** (e.g. a compound vowel ㅘ or compound final ㄳ not split), per-jamo /
+per-scenario / per-participant counts, session counts. Coverage is shown in
+`docs/validate_jamo_counts.png` and `docs/validate_scenario_counts.png` (grayscale).
+If the result is `FAIL`, fix the errors first.
 
-**(2) 세그멘테이션** — 세션 녹음을 개별 타건 클립으로 자른다:
+**(2) Segmentation** — cut sessions into individual keystroke clips:
 ```bash
 python -m src.segment --config config.yaml
 # data/sessions/*.wav  ->  data/clips/*.wav  +  data/metadata.csv
 ```
-`metadata.csv`가 학습의 입력이다. 이 시점의 폴더:
+`metadata.csv` is the training input. Layout at this point:
 ```
 data/
-  sessions/        # 원본 세션 녹음 + 라벨(보관)
-  clips/           # 자른 타건 클립 (세그멘테이션 산출)
-  metadata.csv     # 클립별 라벨 표 (학습 입력)
+  sessions/        # raw session recordings + labels (keep)
+  clips/           # cut keystroke clips (segmentation output)
+  metadata.csv     # per-clip label table (training input)
 ```
 
-> 이미 다른 방식으로 클립을 잘라 둔 경우엔 `data/clips/` + `metadata.csv`를 직접 만들어
-> 넣어도 된다. 필요한 컬럼은 프로젝트 `README.md`의 '형식 B' 표 참고.
+> If you segmented clips another way, you can provide `data/clips/` + `metadata.csv`
+> directly. See the 'Format B' section of `docs/DEVELOPMENT.md` for the required columns.
 
 ---
 
-## 7. 품질 합격 기준 (이 조건을 만족해야 학습 진행)
+## 7. Quality bar (must pass before training)
 
-- `validate_dataset` 결과가 **오류(FAIL) 없음**.
-- 자모 33종이 **모두** 존재하고, 각 **25타건 이상**(figure에서 점선 위).
-- 시나리오마다 **세션 2개 이상**(session-wise 분할 가능).
-- 오디오 **48kHz 모노, 클리핑 없음**, 샘플레이트 혼재 없음.
-- 세 시나리오의 타건 수가 크게 치우치지 않음(참가자×시나리오 표에서 확인).
-
----
-
-## 8. 흔한 실패와 대처
-
-- **클리핑(소리 잘림)**: 게인을 낮추고 그 세션 재녹음. 클리핑된 데이터는 못 쓴다.
-- **검출 개수 불일치(known-text)**: 더 천천히 치거나 `min_gap_ms`↑/`onset_percentile`↓.
-  키로거 방식으로 바꾸면 근본 해결.
-- **허용되지 않은 jamo 경고**: 복합모음/겹받침을 두 타로 안 쪼갠 것. 키로거 방식은
-  물리 키를 기록하므로 자동으로 쪼개진다. known-text는 `decompose_text`가 처리한다.
-- **far에서 정확도 급락**: 정상이다(잔향). 이게 곧 결과(독립변인 효과). 방을 바꾸지 말 것.
-- **참가자별 정확도 편차**: 손 위치·타건 습관 차이. `train.split=participant`로
-  '사용자 간 일반화'를 별도 지표로 보고하면 오히려 논점이 된다.
+- `validate_dataset` result has **no errors (not FAIL)**.
+- All 33 jamo present, each **>= 25 keystrokes** (above the dashed line in the figure).
+- **>= 2 sessions per scenario** (session-wise split possible).
+- Audio is **48 kHz mono, no clipping**, no mixed sample rates.
+- The three scenarios are not badly skewed in keystroke count (check the
+  participant × scenario grid).
 
 ---
 
-## 9. 윤리·동의 (보고서 필수 항목)
+## 8. Common failures & fixes
 
-- 참가자 3명 전원에게 **물리 키 입력이 기록됨**을 사전 고지하고 서면 동의.
-- 프롬프트 문장 외 **실제 비밀번호·개인정보 미수집**. 녹음에 우연히 잡힌 잡담은 폐기.
-- 동의서에 **원본 녹음 폐기 시점** 명시(예: 대회 종료 후 30일).
-- 공격 재현에 필요한 전체 코드/원본 데이터를 무분별하게 공개하지 않는다(고찰에 방어 기법 포함).
+- **Clipping**: lower the gain and re-record that session. Clipped data is unusable.
+- **Count mismatch (known-text)**: type more slowly, or raise `min_gap_ms` / lower
+  `onset_percentile`. Switching to the keylogger method fixes this at the root.
+- **Disallowed jamo warning**: a compound vowel/final not split into two keystrokes. The
+  keylogger method logs physical keys so it splits automatically; known-text uses
+  `decompose_text`.
+- **Accuracy collapses in far**: expected (reverberation). That *is* the result (the IV
+  effect). Don't change the room.
+- **Per-participant accuracy variance**: hand-position/typing-habit differences. Report
+  cross-user generalization separately with `train.split=participant` — it becomes a
+  discussion point rather than a problem.
 
 ---
 
-## 10. 최종 실행 순서 요약
+## 9. Ethics & consent (required in the report)
+
+- Inform all 3 participants that **physical key input is logged** and obtain written
+  consent beforehand.
+- **No real passwords/personal info** beyond the prompt sentences. Discard any incidental
+  speech captured in the recording.
+- State the **raw-recording deletion date** in the consent form (e.g. 30 days after the
+  competition).
+- Do not release the full attack code/raw data indiscriminately (include defenses in the
+  discussion).
+
+---
+
+## 10. Final run order
 
 ```bash
-# (준비) 프롬프트 생성 — 자모 커버리지 확인
+# (prepare) generate prompts — verify jamo coverage
 python -m scripts.make_corpus --per-jamo 25
 
-# (측정) 세션마다 반복: 참가자 3 × 시나리오 3 × 세션 2 = 18회
+# (measure) repeat per session: 3 participants × 3 scenarios × 2 sessions = 18
 python -m scripts.record_session --participant p1 --scenario near --sid p1_near_s0
-#  ... p1_near_s1, p1_far_s0, ... p3_noise_s1 까지
+#  ... p1_near_s1, p1_far_s0, ... through p3_noise_s1
 
-# (재편·검증)
+# (reorganize & validate)
 python -m scripts.validate_dataset --config config.yaml
 python -m src.segment --config config.yaml
-python -m scripts.validate_dataset --config config.yaml   # 클립 기준 재검증(선택)
+python -m scripts.validate_dataset --config config.yaml   # re-check on clips (optional)
 
-# (학습·평가)
+# (train & evaluate)
 python -m src.train    --config config.yaml
 python -m src.evaluate --config config.yaml
 ```

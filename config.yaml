@@ -1,56 +1,56 @@
 # ============================================================
-# KDAA 실험 설정
-# 모든 스크립트가 이 파일을 읽는다. CLI 인자로 개별 항목 override 가능.
+# KDAA experiment configuration.
+# Every script reads this file. Individual keys can be overridden via CLI --set.
 # ============================================================
 
 seed: 20260917
 
 data:
-  root: data                 # 데이터 루트 (metadata.csv, clips/ 위치)
+  root: data                 # data root (metadata.csv, clips/ live here)
   metadata: data/metadata.csv
-  sample_rate: 48000         # 권장: 48 kHz (transient 해상도 확보)
+  sample_rate: 48000         # recommended: 48 kHz (preserves transient resolution)
 
-# ---- 세그멘테이션(연속 세션 녹음 -> 개별 타건 클립) ----
+# ---- segmentation (continuous session recording -> individual keystroke clips) ----
 segment:
-  # 타건 검출 파라미터
-  band_hz: [400, 12000]      # 타건 에너지 밴드패스
-  frame_ms: 2.0              # 에너지 프레임 길이
+  # onset detection params
+  band_hz: [400, 12000]      # keystroke energy bandpass
+  frame_ms: 2.0              # energy frame length
   hop_ms: 1.0
-  onset_percentile: 99.0     # 온셋 임계 백분위(적응형)
-  min_gap_ms: 60             # 인접 온셋 최소 간격(중복 검출 방지)
-  pre_ms: 5                  # 온셋 이전 포함 구간
-  post_ms: 95                # 온셋 이후 포함 구간(press+release 포괄)
-  # -> 클립 길이 = pre_ms + post_ms = 100 ms
+  onset_percentile: 99.0     # adaptive onset threshold percentile
+  min_gap_ms: 60             # min gap between onsets (avoid double detections)
+  pre_ms: 5                  # window before onset
+  post_ms: 95                # window after onset (covers press+release)
+  # -> clip length = pre_ms + post_ms = 100 ms
 
-# ---- 특징(mel-spectrogram) ----
+# ---- features (mel-spectrogram) ----
 feature:
   n_fft: 1024
-  win_ms: 8.0                # ~ Harrison et al. 14ms 이하, transient 집중
+  win_ms: 8.0                # <= Harrison et al. 14ms, focused on transient
   hop_ms: 2.0
   n_mels: 64
   fmin: 200
   fmax: 20000
   log_offset: 1.0e-6
-  target_frames: 48          # 시간축 고정 프레임 수(패딩/자르기)
+  target_frames: 48          # fixed number of time frames (pad/crop)
 
-# ---- 증강 ----
+# ---- augmentation ----
 augment:
   enable: true
-  time_shift_ms: 3           # 랜덤 시간 이동(±)
-  specaug_time: 8            # SpecAugment 시간 마스크 최대폭(프레임)
-  specaug_freq: 8            # 주파수 마스크 최대폭(mel bin)
-  noise_snr_db: [10, 30]     # 학습 시 랜덤 노이즈 믹싱 SNR 범위
+  time_shift_ms: 3           # random time shift (+/-)
+  specaug_time: 8            # SpecAugment max time-mask width (frames)
+  specaug_freq: 8            # frequency-mask max width (mel bins)
+  noise_snr_db: [10, 30]     # random noise-mixing SNR range during training
   noise_prob: 0.5
 
-# ---- 모델 ----
+# ---- model ----
 model:
   arch: smallcnn             # smallcnn | coatnet_lite
   dropout: 0.2
 
-# ---- 학습 ----
+# ---- training ----
 train:
-  split: session             # session | random | participant (기본: session-wise)
-  val_ratio: 0.2             # (random 분할일 때만) 검증 비율
+  split: session             # session | random | participant (default: session-wise)
+  val_ratio: 0.2             # (random split only) validation fraction
   batch_size: 64
   epochs: 40
   lr: 0.001
@@ -60,8 +60,8 @@ train:
   device: auto               # auto | cpu | cuda
   out_dir: runs/exp1
 
-# ---- 평가/디코딩 ----
+# ---- evaluation / decoding ----
 eval:
   topk: [1, 5]
-  beam_width: 8              # 오토마타 제약 빔서치 폭
+  beam_width: 8              # automaton-constrained beam width
   figures_dir: runs/exp1/figures

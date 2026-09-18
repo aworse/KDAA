@@ -1,6 +1,6 @@
 """
-설정 로딩.
-사용 위치: 모든 스크립트가 맨 처음 `from src.config import load_config` 로 불러 씀.
+Configuration loading.
+Used by: every script, via `from src.config import load_config` at startup.
 """
 from __future__ import annotations
 import copy
@@ -10,7 +10,7 @@ import yaml
 
 
 def _to_ns(d):
-    """dict -> 점(.)으로 접근 가능한 네임스페이스(재귀)."""
+    """dict -> namespace with dotted access (recursive)."""
     if isinstance(d, dict):
         return SimpleNamespace(**{k: _to_ns(v) for k, v in d.items()})
     if isinstance(d, list):
@@ -20,8 +20,8 @@ def _to_ns(d):
 
 def load_config(path: str = "config.yaml", overrides: dict | None = None):
     """
-    config.yaml 을 읽어 네임스페이스로 반환.
-    overrides: {"train.epochs": 5, "data.root": "data2"} 형태의 평면 dict.
+    Read config.yaml and return it as a namespace.
+    overrides: a flat dict like {"train.epochs": 5, "data.root": "data2"}.
     """
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -37,7 +37,7 @@ def load_config(path: str = "config.yaml", overrides: dict | None = None):
 
 
 def parse_overrides(pairs: list[str]) -> dict:
-    """CLI 에서 받은 ['train.epochs=5', ...] -> dict. 값은 YAML로 파싱."""
+    """Turn CLI ['train.epochs=5', ...] into a dict; values parsed as YAML."""
     out = {}
     for p in pairs:
         if "=" not in p:
